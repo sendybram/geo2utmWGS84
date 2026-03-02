@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geodetic Calculator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <style>
+        body { background-color: #f8f9fa; padding-top: 20px; display: flex; flex-direction: column; min-height: 100vh; }
+        .content-wrap { flex: 1; }
+        .header-bar { background-color: #005662; color: white; padding: 15px; border-radius: 5px 5px 0 0; }
+        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border: none; }
+        .table-dark-header { background-color: #003b46; color: white; }
+        .nav-tabs .nav-link.active { font-weight: bold; color: #005662; }
+        .result-box { display: none; margin-top: 30px; }
+        .batch-instructions { font-size: 0.9em; background-color: #e9ecef; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
+        footer { font-size: 0.9em; color: #6c757d; }
+    </style>
+</head>
+<body>
+
+<div class="container mb-5 content-wrap">
+    <div class="header-bar mb-4">
+        <h2>🌐 Geodetic Calculators</h2>
+    </div>
+
+    <div class="card p-4">
+        <ul class="nav nav-tabs mb-4" id="calcTabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#grid-to-geo" type="button">Grid to Geographic</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#geo-to-grid" type="button">Geographic to Grid</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link text-success" data-bs-toggle="tab" data-bs-target="#batch-process" type="button">📂 Batch File Processing</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            
+            <div class="tab-pane fade show active" id="grid-to-geo">
+                <h4>Grid (UTM) to Geographic - Single Point</h4>
+                <form id="formGridToGeo">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Ellipsoid:</label>
+                            <select class="form-select" disabled><option>WGS84</option></select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Point Name:</label>
+                            <input type="text" class="form-control" id="g2g_name" value="PT01">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Easting (in metres): *</label>
+                            <input type="number" step="any" class="form-control" id="g2g_easting" value="303757.851" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Northing (in metres): *</label>
+                            <input type="number" step="any" class="form-control" id="g2g_northing" value="2763291.305" required>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Zone: *</label>
+                            <input type="number" class="form-control" id="g2g_zone" value="40" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Hemisphere: *</label>
+                            <select class="form-select" id="g2g_hemi">
+                                <option value="North">North</option>
+                                <option value="South">South</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="calculateGridToGeo()">Calculate</button>
+                </form>
+
+                <div id="resGridToGeo" class="result-box">
+                    <h4>Results - <span id="lbl_g2g_name" class="text-primary"></span></h4>
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center align-middle">
+                            <thead class="table-dark-header">
+                                <tr>
+                                    <th>Latitude</th>
+                                    <th>Longitude</th>
+                                    <th>Grid Convergence (Deg)</th>
+                                    <th>Point Scale</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="out_g2g_lat_dms"></td>
+                                    <td id="out_g2g_lon_dms"></td>
+                                    <td id="out_g2g_conv"></td>
+                                    <td id="out_g2g_scale"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="geo-to-grid">
+                <h4>Geographic to Grid (UTM) - Single Point</h4>
+                
+                <div class="mb-4 p-3 bg-light rounded border">
+                    <label class="form-label fw-bold d-block">Coordinate Input Format:</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="inputFormat" id="fmtDecimal" value="decimal" checked onchange="toggleInputFormat()">
+                        <label class="form-check-label" for="fmtDecimal">Decimal Degrees</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="inputFormat" id="fmtDMS" value="dms" onchange="toggleInputFormat()">
+                        <label class="form-check-label" for="fmtDMS">Text String (DMS)</label>
+                    </div>
+                </div>
+
+                <form id="formGeoToGrid">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Point Name:</label>
+                            <input type="text" class="form-control" id="geo2g_name" value="PT01">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3" id="inputDecimalBlock">
+                        <div class="col-md-6">
+                            <label class="form-label">Latitude (Decimal Degrees): *</label>
+                            <input type="number" step="any" class="form-control" id="geo2g_lat_dec" placeholder="e.g. 24.97234">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Longitude (Decimal Degrees): *</label>
+                            <input type="number" step="any" class="form-control" id="geo2g_lon_dec" placeholder="e.g. 55.05594">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3" id="inputDMSBlock" style="display: none;">
+                        <div class="col-md-6">
+                            <label class="form-label">Latitude (DMS / Free Text): *</label>
+                            <input type="text" class="form-control" id="geo2g_lat_dms_str" placeholder="e.g. 24 58 20 N">
+                            <small class="text-muted">Format contoh: 24 58 20 N atau 24°58'20"N</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Longitude (DMS / Free Text): *</label>
+                            <input type="text" class="form-control" id="geo2g_lon_dms_str" placeholder="e.g. 55 03 21 E">
+                            <small class="text-muted">Format contoh: 55 03 21 E atau 55°03'21"E</small>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-primary" onclick="calculateGeoToGrid()">Calculate</button>
+                </form>
+
+                <div id="resGeoToGrid" class="result-box">
+                    <h4>Results - <span id="lbl_geo2g_name" class="text-primary"></span></h4>
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center align-middle">
+                            <thead class="table-dark-header">
+                                <tr>
+                                    <th>Zone</th>
+                                    <th>Hemisphere</th>
+                                    <th>Easting (m)</th>
+                                    <th>Northing (m)</th>
+                                    <th>Grid Convergence (Deg)</th>
+                                    <th>Point Scale</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="out_geo2g_zone"></td>
+                                    <td id="out_geo2g_hemi"></td>
+                                    <td id="out_geo2g_easting"></td>
+                                    <td id="out_geo2g_northing"></td>
+                                    <td id="out_geo2g_conv"></td>
+                                    <td id="out_geo2g_scale"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="batch-process">
+                <h4>📂 Batch File Conversion</h4>
+                
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Conversion Type:</label>
+                        <select class="form-select" id="batch_type" onchange="updateBatchInstructions()">
+                            <option value="utm2geo">Grid (UTM) to Geographic</option>
+                            <option value="geo2utm">Geographic to Grid (UTM)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-4" id="batch_utm_options">
+                        <label class="form-label fw-bold">Fallback Hemi (If missing in CSV):</label>
+                        <select class="form-select" id="batch_hemi">
+                            <option value="North">North</option>
+                            <option value="South">South</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4" id="batch_geo_options" style="display:none;">
+                        <label class="form-label fw-bold">Input Geographic Format:</label>
+                        <select class="form-select" id="batch_geo_format">
+                            <option value="decimal">Decimal Degrees</option>
+                            <option value="dms">DMS String (e.g., 24 58 20 N)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="batch-instructions" id="batch_instructions">
+                    <strong>Expected CSV/TXT Format (Comma separated):</strong><br>
+                    <code>Zone, PT Name, Easting, Northing</code><br>
+                    <em>Example: 40N, PT01, 303757.851, 2763291.305</em>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Upload File (TXT, CSV):</label>
+                    <input class="form-control" type="file" id="batch_file" accept=".txt,.csv">
+                </div>
+                
+                <button type="button" class="btn btn-success" onclick="processBatchFile()">Process File</button>
+                <button type="button" class="btn btn-outline-secondary ms-2" id="btn_download_csv" style="display: none;" onclick="downloadCSV()">Download Output CSV</button>
+
+                <div id="batch_results_container" class="mt-4" style="display:none;">
+                    <h5>Preview Results <small class="text-muted">(Showing up to 50 rows)</small></h5>
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-bordered table-sm text-center align-middle" id="batch_table">
+                            <thead class="table-dark-header" id="batch_table_head">
+                                </thead>
+                            <tbody id="batch_table_body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<footer class="text-center mt-auto py-4">
+    <div class="container">
+        <strong>Sendy Bram, Dubai, 2026</strong><br>
+        <em>When Iranian missiles flew over me like meteors</em>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Global variable to store CSV output data
+    let globalCsvOutput = "";
+
+    function toggleInputFormat() {
+        var isDMS = document.getElementById('fmtDMS').checked;
+        document.getElementById('inputDecimalBlock').style.display = isDMS ? 'none' : 'flex';
+        document.getElementById('inputDMSBlock').style.display = isDMS ? 'flex' : 'none';
+    }
+
+    function updateBatchInstructions() {
+        var type = document.getElementById('batch_type').value;
+        if(type === 'utm2geo') {
+            document.getElementById('batch_utm_options').style.display = 'block';
+            document.getElementById('batch_geo_options').style.display = 'none';
+            document.getElementById('batch_instructions').innerHTML = `
+                <strong>Expected CSV/TXT Format (Comma separated):</strong><br>
+                <code>Zone, PT Name, Easting, Northing</code><br>
+                <em>Example: 40N, PT01, 303757.851, 2763291.305</em>
+            `;
+        } else {
+            document.getElementById('batch_utm_options').style.display = 'none';
+            document.getElementById('batch_geo_options').style.display = 'block';
+            document.getElementById('batch_instructions').innerHTML = `
+                <strong>Expected CSV/TXT Format (Comma separated):</strong><br>
+                <code>PT Name, Latitude, Longitude</code><br>
+                <em>Example (Decimal): PT01, 24.97234, 55.05594</em><br>
+                <em>Example (DMS): PT01, 24 58 20 N, 55 03 21 E</em>
+            `;
+        }
+    }
+
+    // --- UTILITIES ---
+    function decimalToDMS(deg, isLat) {
+        var d = Math.abs(deg);
+        var degrees = Math.floor(d);
+        var minutesFloor = Math.floor((d - degrees) * 60);
+        var seconds = ((d - degrees - minutesFloor / 60) * 3600).toFixed(5);
+        var direction = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
+        return degrees + "° " + minutesFloor + "' " + seconds + "\" " + direction;
+    }
+
+    function dmsToDecimal(deg, min, sec, dir) {
+        var decimal = Math.abs(deg) + (min / 60.0) + (sec / 3600.0);
+        if (dir === 'S' || dir === 'W' || dir === 's' || dir === 'w') {
+            decimal = decimal * -1;
+        }
+        return decimal;
+    }
+
+    function parseDMSString(dmsStr) {
+        if(!dmsStr) return NaN;
+        // Tangkap pola format spasi atau derajat (contoh: 24 58 20 N)
+        let regex = /([0-9.]+)[^0-9.]+([0-9.]+)[^0-9.]+([0-9.]+)[^a-zA-Z]*([NSEWnsew])/;
+        let match = dmsStr.match(regex);
+        if(match) return dmsToDecimal(parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3]), match[4].toUpperCase());
+        
+        let regexNoDir = /(-?)([0-9.]+)[^0-9.]+([0-9.]+)[^0-9.]+([0-9.]+)/;
+        let matchNoDir = dmsStr.match(regexNoDir);
+        if(matchNoDir) {
+            let sign = matchNoDir[1] === '-' ? -1 : 1;
+            let val = Math.abs(parseFloat(matchNoDir[2])) + (parseFloat(matchNoDir[3])/60.0) + (parseFloat(matchNoDir[4])/3600.0);
+            return val * sign;
+        }
+        return parseFloat(dmsStr);
+    }
+
+    function getUtmProjString(zone, isSouth) {
+        return "+proj=utm +zone=" + zone + (isSouth ? " +south" : "") + " +datum=WGS84 +units=m +no_defs";
+    }
+
+    function calculateFactors(latDeg, lonDeg, zone) {
+        const f = 1.0 / 298.257223563;
+        const e2 = 2*f - f*f;
+        const ep2 = e2 / (1 - e2);
+        const k0 = 0.9996;
+
+        const lat = latDeg * Math.PI / 180.0;
+        const lon = lonDeg * Math.PI / 180.0;
+        const lon0 = (-183.0 + (zone * 6.0)) * Math.PI / 180.0;
+        const dLon = lon - lon0;
+
+        const sinLat = Math.sin(lat);
+        const cosLat = Math.cos(lat);
+        const tanLat = Math.tan(lat);
+        const t2 = tanLat * tanLat;
+        const t4 = t2 * t2;
+        const eta2 = ep2 * cosLat * cosLat;
+        const eta4 = eta2 * eta2;
+
+        const term1_c = dLon * sinLat;
+        const term2_c = (Math.pow(dLon, 3) / 3.0) * sinLat * Math.pow(cosLat, 2) * (1 + 3*eta2 + 2*eta4);
+        const term3_c = (Math.pow(dLon, 5) / 15.0) * sinLat * Math.pow(cosLat, 4) * (2 - t2);
+        const gammaDeg = (term1_c + term2_c + term3_c) * 180.0 / Math.PI;
+
+        const term1_k = (Math.pow(dLon * cosLat, 2) / 2.0) * (1 + eta2);
+        const term2_k = (Math.pow(dLon * cosLat, 4) / 24.0) * (5 - 4*t2 + 14*eta2 + 13*eta4 - 28*t2*eta2);
+        const term3_k = (Math.pow(dLon * cosLat, 6) / 720.0) * (61 - 148*t2 + 16*t4);
+        const k = k0 * (1 + term1_k + term2_k + term3_k);
+
+        return { convergence: gammaDeg, scale: k };
+    }
+
+    // --- SINGLE CONVERSION ---
+    function calculateGridToGeo() {
+        var name = document.getElementById('g2g_name').value;
+        var easting = parseFloat(document.getElementById('g2g_easting').value);
+        var northing = parseFloat(document.getElementById('g2g_northing').value);
+        var zone = parseInt(document.getElementById('g2g_zone').value);
+        var isSouth = (document.getElementById('g2g_hemi').value === "South");
+        
+        if (isNaN(easting) || isNaN(northing) || isNaN(zone)) { alert("Data tidak valid."); return; }
+
+        var utmProj = getUtmProjString(zone, isSouth);
+        var geoCoords = proj4(utmProj, proj4.WGS84, [easting, northing]);
+        var factors = calculateFactors(geoCoords[1], geoCoords[0], zone);
+
+        document.getElementById('lbl_g2g_name').innerText = name;
+        document.getElementById('out_g2g_lat_dms').innerText = decimalToDMS(geoCoords[1], true);
+        document.getElementById('out_g2g_lon_dms').innerText = decimalToDMS(geoCoords[0], false);
+        document.getElementById('out_g2g_conv').innerText = factors.convergence.toFixed(6) + "°";
+        document.getElementById('out_g2g_scale').innerText = factors.scale.toFixed(8);
+        document.getElementById('resGridToGeo').style.display = 'block';
+    }
+
+    function calculateGeoToGrid() {
+        var name = document.getElementById('geo2g_name').value;
+        var lat, lon;
+        
+        if (document.getElementById('fmtDMS').checked) {
+            lat = parseDMSString(document.getElementById('geo2g_lat_dms_str').value);
+            lon = parseDMSString(document.getElementById('geo2g_lon_dms_str').value);
+        } else {
+            lat = parseFloat(document.getElementById('geo2g_lat_dec').value);
+            lon = parseFloat(document.getElementById('geo2g_lon_dec').value);
+        }
+
+        if (isNaN(lat) || isNaN(lon)) { alert("Data input gagal diuraikan. Harap periksa format Latitude & Longitude."); return; }
+
+        var zone = Math.floor((lon + 180) / 6) + 1;
+        var isSouth = (lat < 0);
+        var utmProj = getUtmProjString(zone, isSouth);
+        var utmCoords = proj4(proj4.WGS84, utmProj, [lon, lat]);
+        var factors = calculateFactors(lat, lon, zone);
+
+        document.getElementById('lbl_geo2g_name').innerText = name;
+        document.getElementById('out_geo2g_zone').innerText = zone;
+        document.getElementById('out_geo2g_hemi').innerText = isSouth ? "South" : "North";
+        document.getElementById('out_geo2g_easting').innerText = utmCoords[0].toFixed(3);
+        document.getElementById('out_geo2g_northing').innerText = utmCoords[1].toFixed(3);
+        document.getElementById('out_geo2g_conv').innerText = factors.convergence.toFixed(6) + "°";
+        document.getElementById('out_geo2g_scale').innerText = factors.scale.toFixed(8);
+        document.getElementById('resGeoToGrid').style.display = 'block';
+    }
+
+    // --- BATCH PROCESSING ---
+    function processBatchFile() {
+        const fileInput = document.getElementById('batch_file');
+        if(fileInput.files.length === 0) {
+            alert("Harap pilih file terlebih dahulu."); return;
+        }
+
+        const type = document.getElementById('batch_type').value;
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const text = e.target.result;
+            const lines = text.split(/\r?\n/);
+            
+            let htmlHead = "";
+            let htmlBody = "";
+            let csvData = [];
+            let rowCount = 0;
+
+            if(type === 'utm2geo') {
+                const globalIsSouth = (document.getElementById('batch_hemi').value === "South");
+                
+                htmlHead = `<tr><th>Zone</th><th>PT Name</th><th>Lat (DMS)</th><th>Lon (DMS)</th><th>Convergence</th><th>Scale Factor</th></tr>`;
+                csvData.push(["Zone", "Hemisphere", "PT Name", "Easting", "Northing", "Lat (Decimal)", "Lon (Decimal)", "Lat (DMS)", "Lon (DMS)", "Grid Convergence", "Scale Factor"].join(","));
+
+                for(let i=0; i<lines.length; i++) {
+                    if(!lines[i].trim()) continue;
+                    let cols = lines[i].split(',').map(s => s.trim());
+                    if(cols.length < 4) continue; 
+                    
+                    let zoneStr = cols[0].toUpperCase();
+                    let zoneMatch = zoneStr.match(/^(\d{1,2})([NS])?/);
+                    
+                    if(!zoneMatch) continue;
+                    
+                    let zone = parseInt(zoneMatch[1]);
+                    let isSouth = globalIsSouth;
+                    if (zoneMatch[2]) {
+                        isSouth = (zoneMatch[2] === 'S'); 
+                    }
+                    let hemiStr = isSouth ? "South" : "North";
+
+                    let name = cols[1];
+                    let easting = parseFloat(cols[2]);
+                    let northing = parseFloat(cols[3]);
+
+                    if(isNaN(easting) || isNaN(northing)) continue; 
+
+                    var utmProj = getUtmProjString(zone, isSouth);
+                    var geoCoords = proj4(utmProj, proj4.WGS84, [easting, northing]);
+                    var factors = calculateFactors(geoCoords[1], geoCoords[0], zone);
+
+                    let latDMS = decimalToDMS(geoCoords[1], true);
+                    let lonDMS = decimalToDMS(geoCoords[0], false);
+                    let conv = factors.convergence.toFixed(6);
+                    let scale = factors.scale.toFixed(8);
+
+                    if(rowCount < 50) {
+                        htmlBody += `<tr><td>${zone}${isSouth?'S':'N'}</td><td>${name}</td><td>${latDMS}</td><td>${lonDMS}</td><td>${conv}</td><td>${scale}</td></tr>`;
+                    }
+                    csvData.push([zone, hemiStr, name, easting, northing, geoCoords[1].toFixed(8), geoCoords[0].toFixed(8), `"${latDMS}"`, `"${lonDMS}"`, conv, scale].join(","));
+                    rowCount++;
+                }
+            } 
+            else if (type === 'geo2utm') {
+                const isDMSMode = (document.getElementById('batch_geo_format').value === 'dms');
+
+                htmlHead = `<tr><th>PT Name</th><th>Zone</th><th>Hemi</th><th>Easting</th><th>Northing</th><th>Convergence</th><th>Scale</th></tr>`;
+                csvData.push(["PT Name", "Input Lat", "Input Lon", "Zone", "Hemisphere", "Easting", "Northing", "Grid Convergence", "Scale Factor"].join(","));
+
+                for(let i=0; i<lines.length; i++) {
+                    if(!lines[i].trim()) continue;
+                    let cols = lines[i].split(',').map(s => s.trim());
+                    if(cols.length < 3) continue;
+                    
+                    let name = cols[0];
+                    let latStr = cols[1];
+                    let lonStr = cols[2];
+
+                    if(name.toLowerCase() === 'pt name') continue; 
+
+                    let lat, lon;
+                    if(isDMSMode) {
+                        lat = parseDMSString(latStr);
+                        lon = parseDMSString(lonStr);
+                    } else {
+                        lat = parseFloat(latStr);
+                        lon = parseFloat(lonStr);
+                    }
+
+                    if(isNaN(lat) || isNaN(lon)) continue;
+
+                    let zone = Math.floor((lon + 180) / 6) + 1;
+                    let hemi = (lat < 0) ? "South" : "North";
+                    let utmProj = getUtmProjString(zone, (lat < 0));
+                    let utmCoords = proj4(proj4.WGS84, utmProj, [lon, lat]);
+                    let factors = calculateFactors(lat, lon, zone);
+
+                    let E = utmCoords[0].toFixed(3);
+                    let N = utmCoords[1].toFixed(3);
+                    let conv = factors.convergence.toFixed(6);
+                    let scale = factors.scale.toFixed(8);
+
+                    if(rowCount < 50) {
+                        htmlBody += `<tr><td>${name}</td><td>${zone}</td><td>${hemi}</td><td>${E}</td><td>${N}</td><td>${conv}</td><td>${scale}</td></tr>`;
+                    }
+                    csvData.push([name, `"${latStr}"`, `"${lonStr}"`, zone, hemi, E, N, conv, scale].join(","));
+                    rowCount++;
+                }
+            }
+
+            document.getElementById('batch_table_head').innerHTML = htmlHead;
+            document.getElementById('batch_table_body').innerHTML = htmlBody;
+            document.getElementById('batch_results_container').style.display = 'block';
+            
+            if(rowCount > 0) {
+                globalCsvOutput = csvData.join("\n");
+                document.getElementById('btn_download_csv').style.display = 'inline-block';
+            } else {
+                alert("Tidak ada data yang berhasil diproses. Pastikan format file Anda sesuai.");
+                document.getElementById('btn_download_csv').style.display = 'none';
+            }
+        };
+
+        reader.readAsText(file);
+    }
+
+    function downloadCSV() {
+        if(!globalCsvOutput) return;
+        const blob = new Blob([globalCsvOutput], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "geodetic_batch_results.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+</body>
+</html>
